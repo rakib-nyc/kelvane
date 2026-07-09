@@ -1,0 +1,27 @@
+[package]
+name = "kelvane-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "A safety-first runtime for untrusted, hot-swappable WebAssembly modules with a per-call compute/authority budget and host-owned neural inference (CPU, optional CUDA)."
+keywords = ["wasm", "sandbox", "onnx", "inference", "runtime"]
+categories = ["wasm", "science"]
+
+[dependencies]
+anyhow = { workspace = true }
+tracing = { workspace = true }
+wasmtime = { workspace = true }
+wasmtime-wasi = { workspace = true }
+tract-onnx = { workspace = true }
+ort = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[features]
+default = []
+# GPU-accelerated inference via ONNX Runtime's CUDA execution provider.
+# Falls back to the CPU backend automatically when CUDA hardware/runtime is absent.
+cuda = ["dep:ort", "ort/cuda"]

@@ -1,0 +1,43 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/kelvane-sdk",
+    "crates/kelvane-runtime",
+    "modules/policy-module",
+    "modules/scripted-module",
+    "examples/kelvane-demo",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Muhammad Rakibul Islam"]
+repository = "https://github.com/rakib-nyc/kelvane"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+
+# WASM host runtime
+wasmtime = "29"
+wasmtime-wasi = { version = "29", features = ["preview1"] }
+
+# CPU neural inference (pure-Rust ONNX)
+tract-onnx = "0.21"
+
+# GPU neural inference (optional, behind the `cuda` feature).
+# Building the `cuda` feature requires the ONNX Runtime toolchain (and, for the
+# binary-download path, the OpenSSL development libraries). When that toolchain
+# is absent the default CPU backend is used; see the README's benchmark note.
+ort = { version = "2.0.0-rc.10" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 1

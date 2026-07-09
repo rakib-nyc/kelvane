@@ -1,0 +1,39 @@
+# Rust
+/target
+**/target
+Cargo.lock.bak
+*.pdb
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+
+# Generated artifacts
+/models/*.onnx
+/models/*.onnx.data
+kelvane-marl/logs/
+*.pt
+
+# Logs
+*.log
+err.log
+
+# Internal working docs (kept local, never published)
+PAPER_FACTS.md
+SCRUB_REPORT.md
+*_FACTS.md
+*_REPORT.md
+*_prompt*.md
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

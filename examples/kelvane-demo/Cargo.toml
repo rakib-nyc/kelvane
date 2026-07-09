@@ -1,0 +1,22 @@
+[package]
+name = "kelvane-demo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "End-to-end Kelvane demo: run a trained policy in the sandbox, hit the memory cap, and hot-swap a module."
+publish = false
+
+[[bin]]
+name = "kelvane-demo"
+path = "src/main.rs"
+
+[dependencies]
+kelvane-runtime = { path = "../../crates/kelvane-runtime" }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+# Build the demo against the runtime's CUDA inference backend.
+cuda = ["kelvane-runtime/cuda"]

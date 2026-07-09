@@ -1,0 +1,16 @@
+[package]
+name = "scripted-module"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Example Kelvane module with a fixed scripted response (no inference)."
+publish = false
+
+[dependencies]
+kelvane-sdk = { path = "../../crates/kelvane-sdk" }
+serde_json = { workspace = true }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
