@@ -47,6 +47,40 @@ impl Default for ExecutionLimits {
 /// a buggy or malicious module returning an absurd length).
 const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
 
+/// Decode a guest-returned packed `i64` (`ptr << 32 | len`) into an
+/// `(offset, len)` region, enforcing the max-output cap and validating that the
+/// region lies fully inside the guest's `mem_size`-byte linear memory.
+///
+/// This is the trust boundary for a module's return value — every field is
+/// attacker-controlled — so it is a pure function with no I/O, exercised both by
+/// [`ModuleRuntime::invoke`] and by the `abi_decode` fuzz target.
+#[doc(hidden)]
+pub fn decode_output_region(packed: i64, mem_size: usize) -> Result<(usize, usize)> {
+    let out_ptr = ((packed >> 32) & 0xFFFF_FFFF) as usize;
+    let out_len = (packed & 0xFFFF_FFFF) as usize;
+    if out_len > MAX_OUTPUT_BYTES {
+        anyhow::bail!("output length {out_len} exceeds cap {MAX_OUTPUT_BYTES}");
+    }
+    let end = out_ptr
+        .checked_add(out_len)
+        .ok_or_else(|| anyhow::anyhow!("output region overflow: {out_ptr} + {out_len}"))?;
+    if end > mem_size {
+        anyhow::bail!("output region out of bounds ({end} > {mem_size})");
+    }
+    Ok((out_ptr, out_len))
+}
+
+/// Decode a little-endian `f32` vector from raw guest bytes, ignoring a trailing
+/// partial (`< 4`-byte) remainder. Pure and total — never panics on any input —
+/// which the `infer_decode` fuzz target asserts. Used to marshal the guest's
+/// inference request out of its linear memory.
+#[doc(hidden)]
+pub fn bytes_to_f32(buf: &[u8]) -> Vec<f32> {
+    buf.chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
+}
+
 /// Per-`Store` state: the WASI context plus the memory limiter.
 struct StoreState {
     wasi: WasiP1Ctx,
@@ -198,14 +232,19 @@ impl ModuleRuntime {
                     Some(Extern::Memory(m)) => m,
                     _ => return -1,
                 };
-                let mut buf = vec![0u8; in_len as usize * 4];
+                // Bound the host-side allocation by the guest's actual memory:
+                // `in_len` is attacker-controlled, so without this a guest could
+                // request `in_len * 4` ~= 8 GiB and OOM the host before the read
+                // ever fails. You can never read more bytes than the guest holds.
+                let need = (in_len as usize).saturating_mul(4);
+                if need > mem.data_size(&caller) {
+                    return -1;
+                }
+                let mut buf = vec![0u8; need];
                 if mem.read(&caller, in_ptr as usize, &mut buf).is_err() {
                     return -1;
                 }
-                let input: Vec<f32> = buf
-                    .chunks_exact(4)
-                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                    .collect();
+                let input: Vec<f32> = bytes_to_f32(&buf);
                 let out = match model.run(&input) {
                     Ok(o) => o,
                     Err(_) => return -1,
@@ -242,28 +281,9 @@ impl ModuleRuntime {
         memory.write(&mut store, in_ptr as usize, input)?;
 
         let packed = process_fn.call(&mut store, (in_ptr, input.len() as i32))?;
-        let out_ptr = ((packed >> 32) & 0xFFFF_FFFF) as usize;
-        let out_len = (packed & 0xFFFF_FFFF) as usize;
-
-        if out_len > MAX_OUTPUT_BYTES {
-            anyhow::bail!(
-                "module {} returned implausible output length {}",
-                id,
-                out_len
-            );
-        }
         let mem_size = memory.data_size(&store);
-        let end = out_ptr
-            .checked_add(out_len)
-            .ok_or_else(|| anyhow::anyhow!("module {} output region overflow", id))?;
-        if end > mem_size {
-            anyhow::bail!(
-                "module {} output region out of bounds ({} > {})",
-                id,
-                end,
-                mem_size
-            );
-        }
+        let (out_ptr, out_len) = decode_output_region(packed, mem_size)
+            .map_err(|e| anyhow::anyhow!("module {id}: {e}"))?;
         let mut result = vec![0u8; out_len];
         memory.read(&store, out_ptr, &mut result)?;
 
@@ -298,35 +318,41 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    fn module_wasm(name: &str) -> Option<PathBuf> {
+    // Artifacts are REQUIRED: a missing one fails the test (never a silent skip),
+    // so a green run always means the sandbox was actually exercised. CI builds
+    // the wasm modules before testing; the ONNX model is a committed fixture.
+    fn module_wasm(name: &str) -> PathBuf {
         for base in [
             "../../target/wasm32-wasip1/release",
             "target/wasm32-wasip1/release",
         ] {
             let p = PathBuf::from(format!("{base}/{name}.wasm"));
             if p.exists() {
-                return Some(p);
+                return p;
             }
         }
-        None
+        panic!(
+            "required wasm module '{name}.wasm' not built; run: \
+             cargo build --release --target wasm32-wasip1 -p policy-module -p scripted-module"
+        );
     }
 
-    fn model_path() -> Option<PathBuf> {
-        for base in ["../..", "."] {
-            let p = PathBuf::from(format!("{base}/models/grid_policy.onnx"));
+    fn model_path() -> PathBuf {
+        for base in ["tests/models", "crates/kelvane-runtime/tests/models"] {
+            let p = PathBuf::from(format!("{base}/policy_4x11x11.onnx"));
             if p.exists() {
-                return Some(p);
+                return p;
             }
         }
-        None
+        panic!(
+            "required ONNX fixture 'policy_4x11x11.onnx' not found; \
+             regenerate with crates/kelvane-runtime/tests/models/generate.py"
+        );
     }
 
     #[test]
     fn scripted_module_roundtrips() {
-        let Some(wasm) = module_wasm("scripted_module") else {
-            println!("skip: scripted_module WASM not built");
-            return;
-        };
+        let wasm = module_wasm("scripted_module");
         let mut rt = ModuleRuntime::new(ExecutionLimits::default()).unwrap();
         rt.load_module(&wasm, "scripted").unwrap();
         let out = rt.invoke("scripted", b"{}").unwrap();
@@ -337,10 +363,7 @@ mod tests {
 
     #[test]
     fn memory_limit_blocks_oversized_module() {
-        let Some(wasm) = module_wasm("scripted_module") else {
-            println!("skip: scripted_module WASM not built");
-            return;
-        };
+        let wasm = module_wasm("scripted_module");
         // Cap memory below the module's initial linear memory so instantiation is
         // rejected by the ResourceLimiter.
         let limits = ExecutionLimits {
@@ -359,16 +382,9 @@ mod tests {
 
     #[test]
     fn hot_swap_replaces_module() {
-        let (Some(scripted), Some(policy)) =
-            (module_wasm("scripted_module"), module_wasm("policy_module"))
-        else {
-            println!("skip: both modules not built");
-            return;
-        };
-        let Some(model) = model_path() else {
-            println!("skip: model not exported");
-            return;
-        };
+        let scripted = module_wasm("scripted_module");
+        let policy = module_wasm("policy_module");
+        let model = model_path();
         let mut rt = ModuleRuntime::new(ExecutionLimits::default()).unwrap();
         rt.load_model(&model, &[1, 4, 11, 11]).unwrap();
         rt.load_module(&scripted, "slot").unwrap();
@@ -387,10 +403,8 @@ mod tests {
 
     #[test]
     fn policy_module_runs_model() {
-        let (Some(wasm), Some(model)) = (module_wasm("policy_module"), model_path()) else {
-            println!("skip: policy module and/or model not present");
-            return;
-        };
+        let wasm = module_wasm("policy_module");
+        let model = model_path();
         let mut rt = ModuleRuntime::new(ExecutionLimits::default()).unwrap();
         rt.load_model(&model, &[1, 4, 11, 11]).unwrap();
         rt.load_module(&wasm, "policy").unwrap();
@@ -403,5 +417,39 @@ mod tests {
 
     fn observation_json(data: &[f32]) -> String {
         format!("{{\"data\":{}}}", serde_json::to_string(data).unwrap())
+    }
+
+    // --- pure decode helpers (the ABI trust boundary; also fuzzed) ----------
+
+    #[test]
+    fn decode_output_rejects_over_cap() {
+        assert!(decode_output_region((MAX_OUTPUT_BYTES as i64) + 1, usize::MAX).is_err());
+    }
+
+    #[test]
+    fn decode_output_rejects_out_of_bounds() {
+        // ptr=0, len=100 but memory only 10 bytes.
+        assert!(decode_output_region(100, 10).is_err());
+    }
+
+    #[test]
+    fn decode_output_accepts_in_bounds() {
+        // ptr=8, len=4, memory=64 -> Ok(8,4).
+        let packed = ((8_i64) << 32) | 4;
+        assert_eq!(decode_output_region(packed, 64).unwrap(), (8, 4));
+    }
+
+    #[test]
+    fn decode_output_max_pointer_is_oob_not_panic() {
+        let packed = ((0xFFFF_FFFF_i64) << 32) | (1024 * 1024);
+        assert!(decode_output_region(packed, 64 * 1024).is_err());
+    }
+
+    #[test]
+    fn bytes_to_f32_ignores_partial_tail_and_never_panics() {
+        assert_eq!(bytes_to_f32(&[]).len(), 0);
+        assert_eq!(bytes_to_f32(&[1, 2, 3]).len(), 0); // < 4 bytes
+        assert_eq!(bytes_to_f32(&[0, 0, 0, 0, 1]).len(), 1); // 5 bytes -> 1 f32
+        assert_eq!(bytes_to_f32(&0.0_f32.to_le_bytes()), vec![0.0]);
     }
 }

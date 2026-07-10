@@ -10,37 +10,22 @@
 // limitations under the License.
 
 //! End-to-end integration test over the public API: load a model + module and
-//! run inference in the sandbox. Skips gracefully if the artifacts aren't built.
+//! run inference in the sandbox. Uses a committed ONNX fixture and the built
+//! `policy_module.wasm`; a missing artifact is a hard failure, never a skip.
 
-use std::path::PathBuf;
+mod common;
 
-use kelvane_runtime::{ExecutionLimits, ModuleRuntime};
-
-fn find(rel: &str) -> Option<PathBuf> {
-    for base in ["../../", "", "../"] {
-        let p = PathBuf::from(format!("{base}{rel}"));
-        if p.exists() {
-            return Some(p);
-        }
-    }
-    None
-}
+use common::{default_rt, fixture, module_wasm, zeros_observation};
 
 #[test]
 fn policy_runs_in_sandbox() {
-    let (Some(wasm), Some(model)) = (
-        find("target/wasm32-wasip1/release/policy_module.wasm"),
-        find("models/grid_policy.onnx"),
-    ) else {
-        println!("skip: policy module and/or model not present");
-        return;
-    };
-    let mut rt = ModuleRuntime::new(ExecutionLimits::default()).unwrap();
-    rt.load_model(&model, &[1, 4, 11, 11]).unwrap();
-    rt.load_module(&wasm, "policy").unwrap();
+    let mut rt = default_rt();
+    rt.load_model(&fixture("policy_4x11x11.onnx"), &[1, 4, 11, 11])
+        .unwrap();
+    rt.load_module(&module_wasm("policy_module"), "policy")
+        .unwrap();
 
-    let data: Vec<f32> = vec![0.05; 4 * 11 * 11];
-    let input = format!("{{\"data\":{}}}", serde_json::to_string(&data).unwrap());
+    let input = zeros_observation(4 * 11 * 11);
     let out = rt.invoke("policy", input.as_bytes()).unwrap();
     let decision: serde_json::Value = serde_json::from_slice(&out).unwrap();
     assert_eq!(decision["module"], "policy");

@@ -7,6 +7,9 @@ members = [
     "modules/scripted-module",
     "examples/kelvane-demo",
 ]
+# `fuzz/` is its own workspace (nightly + libFuzzer only); keep it out of the
+# default build/test so stable CI is unaffected. Run with `cargo +nightly fuzz`.
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.0"

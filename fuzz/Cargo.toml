@@ -1,0 +1,31 @@
+[package]
+name = "kelvane-runtime-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.kelvane-runtime]
+path = "../crates/kelvane-runtime"
+
+[[bin]]
+name = "abi_decode"
+path = "fuzz_targets/abi_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "infer_decode"
+path = "fuzz_targets/infer_decode.rs"
+test = false
+doc = false
+bench = false
+
+# Own workspace so `cargo fuzz` resolves independently of the main crate graph.
+[workspace]

@@ -24,9 +24,11 @@ use kelvane_sdk::export_module;
 use serde_json::json;
 
 /// Fixed model input length: 4 channels x 11 x 11.
-const INPUT_LEN: usize = 4 * 11 * 11;
-/// Number of discrete actions the policy scores.
-const N_ACTIONS: usize = 7;
+/// Upper bound on the number of action scores this module reads back. The guest
+/// is shape-agnostic — it forwards however many features it is given and accepts
+/// up to this many scores — so one module works across models of different input
+/// and output sizes (the host owns the actual shape).
+const MAX_ACTIONS: usize = 64;
 
 #[link(wasm_import_module = "kelvane")]
 extern "C" {
@@ -41,13 +43,17 @@ fn handle(input: &[u8]) -> Vec<u8> {
         Ok(v) => v,
         Err(_) => return fallback("invalid_input"),
     };
-    let mut features: Vec<f32> = value["data"]
+    // Forward the feature vector as-is; its length must match the loaded model's
+    // input size, which the host enforces (a mismatch comes back as an error).
+    let features: Vec<f32> = value["data"]
         .as_array()
         .map(|a| a.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect())
         .unwrap_or_default();
-    features.resize(INPUT_LEN, 0.0);
+    if features.is_empty() {
+        return fallback("invalid_input");
+    }
 
-    let mut scores = [0f32; N_ACTIONS];
+    let mut scores = [0f32; MAX_ACTIONS];
     let n = unsafe {
         infer(
             features.as_ptr() as i32,

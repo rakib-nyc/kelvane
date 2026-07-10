@@ -29,6 +29,15 @@ cd kelvane-marl
 pytest -q
 ```
 
+The runtime's artifact-dependent tests **fail** (never skip) if their inputs are
+missing, so a green run always means the sandbox was actually exercised. Build
+the wasm example modules first (as above); the small ONNX models they load are
+committed fixtures under `crates/kelvane-runtime/tests/models/` (regenerate with
+that directory's `generate.py`, which needs only `onnx`). Adversarial and
+fuzz-decode coverage lives in `crates/kelvane-runtime/tests/adversarial.rs` and
+`fuzz/` (the latter needs nightly + `cargo-fuzz`; it is its own workspace and is
+not part of the default build).
+
 All checks must pass before a pull request is merged. GPU-only code paths are
 gated behind the `cuda` Cargo feature and a runtime hardware check so the default
 suite runs anywhere.
