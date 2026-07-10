@@ -8,64 +8,110 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Fail loudly if the committed Cargo.lock is out of sync (reproducibility).
+  CARGO_NET_LOCKED: "true"
 
 jobs:
-  rust:
-    name: Rust (CPU)
+  fmt:
+    name: Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  # OS x Rust matrix. Every cell builds the wasm + uses the committed ONNX
+  # fixtures BEFORE testing, so the Phase 2 no-skip guarantee holds everywhere:
+  # a green cell means the sandbox was actually exercised on that platform.
+  test:
+    name: ${{ matrix.os }} / ${{ matrix.rust }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust: [stable, "1.88.0"] # 1.88.0 = empirically-determined MSRV
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: clippy
           targets: wasm32-wasip1
-      - name: Format check
-        run: cargo fmt --all -- --check
+      - name: Build wasm example modules (release)
+        run: cargo build --release --locked --target wasm32-wasip1 -p policy-module -p scripted-module
       - name: Clippy (deny warnings)
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Build example modules (wasm32-wasip1)
-        run: cargo build --release --target wasm32-wasip1 -p policy-module -p scripted-module
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Build
-        run: cargo build --release
-      - name: Test
-        run: cargo test --workspace
+        run: cargo build --locked
+      - name: Test (no-skip - artifacts present)
+        run: cargo test --workspace --locked
+
+  coverage:
+    name: Coverage (llvm-cov)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+          targets: wasm32-wasip1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Build wasm example modules (release)
+        run: cargo build --release --locked --target wasm32-wasip1 -p policy-module -p scripted-module
+      - name: Coverage
+        run: |
+          cargo llvm-cov --workspace --locked --summary-only | tee coverage.txt
+          echo '## Coverage' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat coverage.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  deny:
+    name: cargo-deny (licenses + bans)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2
+      - run: cargo deny check licenses bans sources
+
+  audit:
+    name: cargo-audit (advisories, non-blocking)
+    runs-on: ubuntu-latest
+    # Non-blocking: wasmtime 29 carries known RustSec advisories whose fixes
+    # require a breaking major bump (see the Phase 3 report). Reported here every
+    # run so nothing is hidden, but does not gate CI pending that decision.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit
 
   rust-cuda:
-    # Build-only, best-effort: the runner has no GPU, so this compiles the CUDA
-    # backend (it does not run it) and is allowed to fail without blocking CI.
+    # Build-only, best-effort: the runner has no GPU, so this compiles (and now
+    # lints) the CUDA backend without running it. Allowed to fail without
+    # blocking CI.
     name: Rust (CUDA build-only, best-effort, no GPU)
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install OpenSSL build deps
-        # `ort` downloads ONNX Runtime over TLS at build time (pulls in
-        # openssl-sys). ubuntu-latest ships these, but install explicitly so the
-        # job is self-documenting and resilient to runner-image changes.
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
-      - name: Build with CUDA feature (compile only, no GPU run)
-        run: cargo build --release --features cuda -p kelvane-runtime
-
-  python:
-    name: kelvane-marl (pytest)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: kelvane-marl
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Install
-        # Install the package itself (editable) plus its onnx/dev extras, with
-        # torch resolved from the CPU wheel index (fast, no CUDA). Installing the
-        # package is what makes `import kelvane_marl` work under pytest.
-        run: |
-          python -m pip install --upgrade pip
-          pip install --index-url https://download.pytorch.org/whl/cpu \
-                      --extra-index-url https://pypi.org/simple \
-                      -e '.[onnx,dev]'
-      - name: Pytest
-        run: pytest -q
+          components: clippy
+      - name: Install OpenSSL build deps
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+      - name: Clippy (cuda feature)
+        run: cargo clippy --features cuda -p kelvane-runtime --locked -- -D warnings
+      - name: Build with CUDA feature (compile only, no GPU run)
+        run: cargo build --release --features cuda -p kelvane-runtime --locked

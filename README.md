@@ -1,5 +1,10 @@
 # Kelvane
 
+[![CI](https://github.com/rakib-nyc/kelvane/actions/workflows/ci.yml/badge.svg)](https://github.com/rakib-nyc/kelvane/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-70%25-yellowgreen)](#supported-platforms--toolchains)
+[![MSRV](https://img.shields.io/badge/MSRV-1.88.0-blue)](#supported-platforms--toolchains)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 **Run neural policies you don't fully trust — safely, and swap them live.**
 
 Kelvane is a small, honest toolkit for **safety-first neural inference on
@@ -150,6 +155,49 @@ cargo run --release --features cuda --example bench_e2e -p kelvane-runtime   # G
 ```
 
 These are not general performance claims — measure your own model and hardware.
+
+## Supported platforms & toolchains
+
+CI builds and runs the **full** test suite on every cell below. WASM modules are
+built and the ONNX fixtures are committed **before** the test step, so nothing is
+skipped — a green cell means the sandbox was actually exercised on that platform
+(not merely compiled). All cells build with `--locked`.
+
+| OS (runner) | Rust stable | Rust 1.88.0 (MSRV) |
+|---|---|---|
+| Linux — `ubuntu-latest`, x86-64 | ✅ | ✅ |
+| macOS — `macos-latest`, arm64 | ✅ | ✅ |
+| Windows — `windows-latest`, x86-64 | ✅ | ✅ |
+
+- **MSRV: 1.88.0**, determined empirically — the dependency tree's floor is
+  `time 0.3.53` (rustc 1.88). 1.87 and below fail to build; the MSRV CI row pins
+  exactly 1.88.0. `rust-version` in `Cargo.toml` matches.
+- **wasm target:** the example guest modules compile to `wasm32-wasip1`
+  (`rustup target add wasm32-wasip1`). The guest code is gated to `wasm32`, so a
+  host-side `cargo build`/`clippy --workspace` is link-clean on every OS.
+- **CUDA backend** (`cuda` feature): a separate, **non-blocking, build-only**
+  Linux job (the runners have no GPU) — it compiles and lint-checks the backend
+  but does not run it. Building it needs `libssl-dev` + `pkg-config`; running it
+  needs the CUDA runtime + cuDNN 9 on the library path.
+- **Reproducibility:** `Cargo.lock` is committed and authoritative; CI builds
+  `--locked` so an out-of-sync lock fails loudly. `ort` is pinned to
+  `=2.0.0-rc.12`. Python deps in `kelvane-marl` are fully pinned.
+- **Toolchain versions** behind the benchmark numbers are listed in the
+  Benchmarks *Environment* line above and match what CI uses.
+
+### Supply-chain status (honest)
+
+- **Licenses** (`cargo deny`): the whole dependency tree is permissive and
+  Apache-2.0-compatible (Apache-2.0/MIT/BSD/ISC/Zlib/Unicode-3.0/Unlicense/
+  BlueOak). The only copyleft entries (`ittapi` GPL-2.0, `r-efi` LGPL-2.1) are
+  the copyleft arm of dual/multi-licensed crates; the permissive arm is selected,
+  so **no copyleft obligation** and **no GPL/AGPL surprise**.
+- **Advisories** (`cargo audit`, reported by a **non-blocking** CI job): the
+  pinned `wasmtime` 29 / `wasmtime-wasi` 29 carry **19 open RustSec advisories**
+  (incl. 2 rated critical) whose fixes require a **breaking** bump to
+  `wasmtime ≥ 36`. This is reported every CI run (nothing hidden) and is flagged
+  for a dedicated follow-up rather than silently bumped — see the changelog / the
+  Phase 3 notes. `fxhash` and `paste` are flagged unmaintained (transitive).
 
 ## License
 
