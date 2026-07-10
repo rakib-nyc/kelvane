@@ -158,7 +158,7 @@ impl ModuleRuntime {
         let slot = self
             .modules
             .get_mut(id)
-            .ok_or_else(|| anyhow::anyhow!("module {} not loaded; cannot hot-swap", id))?;
+            .ok_or_else(|| anyhow::anyhow!("module {id} not loaded; cannot hot-swap"))?;
         slot.module = module;
         info!(module = id, "Hot-swapped module");
         Ok(())
@@ -200,7 +200,7 @@ impl ModuleRuntime {
             let slot = self
                 .modules
                 .get(id)
-                .ok_or_else(|| anyhow::anyhow!("module {} not found", id))?;
+                .ok_or_else(|| anyhow::anyhow!("module {id} not found"))?;
             slot.module.clone()
         };
 
@@ -267,7 +267,7 @@ impl ModuleRuntime {
         let instance = linker.instantiate(&mut store, &module)?;
         let memory = instance
             .get_memory(&mut store, "memory")
-            .ok_or_else(|| anyhow::anyhow!("module {} has no `memory` export", id))?;
+            .ok_or_else(|| anyhow::anyhow!("module {id} has no `memory` export"))?;
         let alloc_fn = instance.get_typed_func::<i32, i32>(&mut store, "module_alloc")?;
         let process_fn = instance.get_typed_func::<(i32, i32), i64>(&mut store, "process")?;
 
@@ -375,8 +375,7 @@ mod tests {
         let result = rt.invoke("tiny", b"{}");
         assert!(
             result.is_err(),
-            "expected memory-limit rejection, got {:?}",
-            result
+            "expected memory-limit rejection, got {result:?}"
         );
     }
 

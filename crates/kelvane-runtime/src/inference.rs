@@ -27,6 +27,10 @@ pub struct Model {
     backend: &'static str,
 }
 
+// A model is loaded once and stored behind an `Arc`, so the size gap between the
+// CPU and (ONNX Runtime session) GPU variants is irrelevant — not worth an extra
+// box on the benchmarked CPU inference path.
+#[cfg_attr(feature = "cuda", allow(clippy::large_enum_variant))]
 enum Backend {
     Cpu(cpu::CpuModel),
     #[cfg(feature = "cuda")]
