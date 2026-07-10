@@ -102,27 +102,54 @@ host-owned inference, that is what Kelvane is.
 
 ## Benchmarks
 
-Measured on this contributor's hardware (AMD Ryzen 7 CPU; NVIDIA RTX 2080 Super).
-Inference of the exported `[1,4,11,11]` policy, 2000 iterations after warm-up.
+Two things are measured, because they answer different questions:
 
-| Backend | Median | Throughput |
-|---|---|---|
-| CPU (`tract`) | **16.6 µs** | ~58,000 inferences/s |
+- **End-to-end** (`bench_e2e`) — a full `ModuleRuntime::invoke`: fresh sandbox
+  store, WASI + inference linker setup, instantiation, the guest `module_alloc` +
+  input copy, the `process` ABI round trip (including the guest's call back into
+  host `kelvane::infer`), reading the packed output, `module_dealloc`, and store
+  teardown. **This is the latency a caller actually pays per decision.**
+- **Inference-only** (`bench`) — just the host-side `Model::run` (one ONNX
+  forward pass), for comparison. It is *not* the per-call cost.
 
-A **CUDA backend** is available behind the `cuda` Cargo feature (ONNX Runtime's
-CUDA execution provider) with automatic fallback to CPU. It was **not built in
-this environment** — the ONNX Runtime toolchain was unavailable here (the
-binary-download path requires the OpenSSL development libraries) — so **no CUDA
-numbers are reported**; they would be fabricated otherwise. On a machine with the
-ONNX Runtime CUDA toolchain, build and measure with:
+Exported `[1,4,11,11]` policy, 2000 iterations after 50 warm-up iterations.
+
+**Environment.** AMD Ryzen 7 3700X (8C/16T) · NVIDIA RTX 2080 SUPER (driver
+610.62, CUDA 12.x) · Ubuntu 24.04.2 on WSL2 (kernel 6.18, Windows 10) · rustc
+1.94.1 · wasmtime 29.0.1 · tract-onnx 0.21.12 · ort 2.0.0-rc.12 (ONNX Runtime,
+CUDA EP). All figures are from this one machine.
+
+| Path | Backend | median | mean | p95 | p99 | throughput |
+|---|---|---|---|---|---|---|
+| **End-to-end** | CPU (`tract`) | **161 µs** | 166 µs | 203 µs | ~240 µs | ~6,000 calls/s |
+| **End-to-end** | GPU (CUDA/ORT) | 337 µs | 346 µs | 397 µs | 457 µs | ~2,900 calls/s |
+| Inference-only | CPU (`tract`) | 16.4 µs | 17.1 µs | 21.5 µs | ~31 µs | ~58,600 inf/s |
+| Inference-only | GPU (CUDA/ORT) | 153 µs | 159 µs | 182 µs | 218 µs | ~6,300 inf/s |
+
+Two honest takeaways for *this* small model on *this* machine:
+
+1. **The full sandboxed call is ~10× the inference number** (161 µs vs 16.4 µs on
+   CPU). Per-call store construction, instantiation, and the ABI round trip — not
+   inference — dominate. The previously reported ~16 µs was inference-only and
+   understated the real per-decision latency by roughly an order of magnitude.
+2. **The GPU path is real but slower here — about 9× slower than CPU** (153 µs vs
+   16.4 µs inference-only). Expected for a tiny `[1,4,11,11]→7` model: kernel
+   launch and host⇄device transfer swamp the compute, and `tract`'s optimized CPU
+   path wins. CUDA is present for larger models, not as a speed-up for this one.
+
+The `cuda` feature depends on ONNX Runtime, which `ort` fetches over TLS at build
+time; that pulls in `openssl-sys`, so a CUDA build needs the OpenSSL development
+headers and `pkg-config` (e.g. `apt-get install libssl-dev pkg-config` on
+Debian/Ubuntu) plus, at run time, the CUDA runtime and cuDNN 9 on the library
+path. Reproduce with:
 
 ```bash
-cargo run --release --features cuda --example bench -p kelvane-runtime
+cargo run --release --example bench_e2e -p kelvane-runtime            # CPU, end-to-end
+cargo run --release --example bench      -p kelvane-runtime            # CPU, inference-only
+cargo run --release --features cuda --example bench_e2e -p kelvane-runtime   # GPU
 ```
 
-Numbers are illustrative of *this* small model on *this* machine; run
-`cargo run --release --example bench -p kelvane-runtime` to measure your own.
-Do not treat these as general performance claims.
+These are not general performance claims — measure your own model and hardware.
 
 ## License
 

@@ -31,13 +31,20 @@ jobs:
         run: cargo test --workspace
 
   rust-cuda:
-    name: Rust (CUDA build, non-blocking)
+    # Build-only, best-effort: the runner has no GPU, so this compiles the CUDA
+    # backend (it does not run it) and is allowed to fail without blocking CI.
+    name: Rust (CUDA build-only, best-effort, no GPU)
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Build with CUDA feature
+      - name: Install OpenSSL build deps
+        # `ort` downloads ONNX Runtime over TLS at build time (pulls in
+        # openssl-sys). ubuntu-latest ships these, but install explicitly so the
+        # job is self-documenting and resilient to runner-image changes.
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+      - name: Build with CUDA feature (compile only, no GPU run)
         run: cargo build --release --features cuda -p kelvane-runtime
 
   python:
@@ -52,9 +59,13 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install
+        # Install the package itself (editable) plus its onnx/dev extras, with
+        # torch resolved from the CPU wheel index (fast, no CUDA). Installing the
+        # package is what makes `import kelvane_marl` work under pytest.
         run: |
           python -m pip install --upgrade pip
-          pip install numpy torch --index-url https://download.pytorch.org/whl/cpu
-          pip install gymnasium pettingzoo onnx onnxruntime pytest
+          pip install --index-url https://download.pytorch.org/whl/cpu \
+                      --extra-index-url https://pypi.org/simple \
+                      -e '.[onnx,dev]'
       - name: Pytest
         run: pytest -q

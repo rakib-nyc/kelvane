@@ -17,15 +17,23 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = ["numpy", "torch", "gymnasium", "pettingzoo"]
+# Pinned to a known-working set (verified on Python 3.12, CPU). `torch` is
+# version-pinned only; install it from the CPU wheel index in CI/dev to avoid
+# pulling the large CUDA build (see the README and CI workflow).
+dependencies = [
+    "numpy==2.5.1",
+    "torch==2.13.0",
+    "gymnasium==1.3.0",
+    "pettingzoo==1.26.1",
+]
 
 [project.urls]
 Homepage = "https://github.com/rakib-nyc/kelvane"
 Repository = "https://github.com/rakib-nyc/kelvane"
 
 [project.optional-dependencies]
-onnx = ["onnx", "onnxruntime"]
-dev = ["pytest"]
+onnx = ["onnx==1.22.0", "onnxruntime==1.27.0"]
+dev = ["pytest==9.1.1"]
 
 [tool.setuptools.packages.find]
 include = ["kelvane_marl*"]

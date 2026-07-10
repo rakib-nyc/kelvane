@@ -52,11 +52,21 @@ fn main() -> anyhow::Result<()> {
     samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mean = samples.iter().sum::<f64>() / samples.len() as f64;
     let median = samples[samples.len() / 2];
-    let p95 = samples[(samples.len() as f64 * 0.95) as usize];
+    // Nearest-rank percentiles.
+    let pct = |p: f64| -> f64 {
+        let idx = (((p / 100.0) * samples.len() as f64).ceil() as usize)
+            .saturating_sub(1)
+            .min(samples.len() - 1);
+        samples[idx]
+    };
     println!("iters: {iters}");
+    println!("min:    {:.1} us", samples[0]);
     println!("mean:   {mean:.1} us");
     println!("median: {median:.1} us");
-    println!("p95:    {p95:.1} us");
-    println!("throughput: {:.0} inferences/s", 1e6 / mean);
+    println!("p50:    {:.1} us", pct(50.0));
+    println!("p95:    {:.1} us", pct(95.0));
+    println!("p99:    {:.1} us", pct(99.0));
+    println!("max:    {:.1} us", samples[samples.len() - 1]);
+    println!("throughput (mean): {:.0} inferences/s", 1e6 / mean);
     Ok(())
 }

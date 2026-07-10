@@ -138,13 +138,23 @@ mod gpu {
         shape: Vec<i64>,
     }
 
+    // ort 2.0's `Error<R>` embeds the (non-`Send`/`Sync`) builder handle it
+    // failed on, so it can't cross a `?` into `anyhow::Error` directly; funnel
+    // every ort error through its `Display` string instead.
+    fn ort_err(e: impl std::fmt::Display) -> anyhow::Error {
+        anyhow::anyhow!("ort: {e}")
+    }
+
     impl GpuModel {
         pub fn load(path: &Path, shape: &[usize]) -> Result<Self> {
-            let session = ort::session::Session::builder()?
+            let session = ort::session::Session::builder()
+                .map_err(ort_err)?
                 .with_execution_providers([
                     ort::execution_providers::CUDAExecutionProvider::default().build(),
-                ])?
-                .commit_from_file(path)?;
+                ])
+                .map_err(ort_err)?
+                .commit_from_file(path)
+                .map_err(ort_err)?;
             Ok(Self {
                 session: Mutex::new(session),
                 shape: shape.iter().map(|&d| d as i64).collect(),
@@ -152,13 +162,14 @@ mod gpu {
         }
 
         pub fn run(&self, input: &[f32]) -> Result<Vec<f32>> {
-            let tensor = ort::value::Tensor::from_array((self.shape.clone(), input.to_vec()))?;
+            let tensor = ort::value::Tensor::from_array((self.shape.clone(), input.to_vec()))
+                .map_err(ort_err)?;
             let mut session = self
                 .session
                 .lock()
                 .map_err(|_| anyhow::anyhow!("inference session mutex poisoned"))?;
-            let outputs = session.run(ort::inputs![tensor])?;
-            let (_shape, data) = outputs[0].try_extract_tensor::<f32>()?;
+            let outputs = session.run(ort::inputs![tensor]).map_err(ort_err)?;
+            let (_shape, data) = outputs[0].try_extract_tensor::<f32>().map_err(ort_err)?;
             Ok(data.to_vec())
         }
     }
