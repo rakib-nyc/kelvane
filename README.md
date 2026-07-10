@@ -1,7 +1,7 @@
 # Kelvane
 
 [![CI](https://github.com/rakib-nyc/kelvane/actions/workflows/ci.yml/badge.svg)](https://github.com/rakib-nyc/kelvane/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-70%25-yellowgreen)](#supported-platforms--toolchains)
+[![Coverage](https://img.shields.io/badge/coverage-79%25-green)](#supported-platforms--toolchains)
 [![MSRV](https://img.shields.io/badge/MSRV-1.88.0-blue)](#supported-platforms--toolchains)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
