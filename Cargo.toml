@@ -14,6 +14,10 @@ exclude = ["fuzz"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+# Minimum Supported Rust Version — determined empirically (the default build's
+# floor comes from `icu_*` 2.2.0 in the tree). CI pins an MSRV row to exactly
+# this; `cuda` needs a newer toolchain (ort is edition 2024 / rustc 1.88+).
+rust-version = "1.86.0"
 license = "Apache-2.0"
 authors = ["Muhammad Rakibul Islam"]
 repository = "https://github.com/rakib-nyc/kelvane"
@@ -35,7 +39,8 @@ tract-onnx = "0.21"
 # Building the `cuda` feature requires the ONNX Runtime toolchain (and, for the
 # binary-download path, the OpenSSL development libraries). When that toolchain
 # is absent the default CPU backend is used; see the README's benchmark note.
-ort = { version = "2.0.0-rc.10" }
+# Pinned exactly to match Cargo.lock (a pre-release; `=` avoids rc drift).
+ort = { version = "=2.0.0-rc.12" }
 
 [profile.release]
 opt-level = 3

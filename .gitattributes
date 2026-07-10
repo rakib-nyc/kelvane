@@ -1,0 +1,9 @@
+# Normalize line endings so the same bytes are checked out on every OS. Without
+# this, Git on Windows can convert source to CRLF and break `cargo fmt --check`.
+* text=auto eol=lf
+
+# Binary fixtures / artifacts must never be line-ending converted.
+*.onnx binary
+*.wasm binary
+*.pt binary
+*.png binary

@@ -1,0 +1,35 @@
+# cargo-deny policy for Kelvane (Apache-2.0). See the Phase 3 report.
+#
+# Scope in CI: `cargo deny check licenses bans sources` (blocking). Security
+# advisories are reported by a separate, non-blocking `cargo audit` job.
+
+[graph]
+# Evaluate the default feature set (the `cuda`/ort tree is optional and gated).
+all-features = false
+
+[licenses]
+# Permissive licenses compatible with redistributing an Apache-2.0 project.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "0BSD",
+    "Zlib",
+    "Unicode-3.0",
+    "Unlicense",
+    "BlueOak-1.0.0",
+]
+confidence-threshold = 0.9
+# `ittapi`/`ittapi-sys` are `GPL-2.0-only OR BSD-3-Clause` and `r-efi` is
+# `MIT OR Apache-2.0 OR LGPL-2.1-or-later`; cargo-deny selects the permissive arm
+# (allowed above), so no copyleft obligation attaches. No other copyleft in-tree.
+
+[bans]
+multiple-versions = "warn"   # duplicates are noise, not a policy failure
+wildcards = "warn"           # a transitive dep uses `*`; report, don't block
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
