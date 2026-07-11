@@ -181,17 +181,17 @@ things experimental — under-promising is deliberate.
 
 **`kelvane-runtime`**
 
-- *Stable:* `ModuleRuntime` and its methods (`new`, `load_model`, `load_module`,
-  `invoke`, `hot_swap`, `call_count`, `model_backend`); `ExecutionLimits` and its
-  fields; `inference::load_model`; `Model` and its methods (`run`, `input_len`,
-  `backend`).
+- *Stable:* `ModuleRuntime` and its methods (`new`, `load_module`, `invoke`,
+  `hot_swap`, `call_count`, `model_backend`); `ExecutionLimits` and its fields;
+  `Model` and its methods (`run`, `input_len`, `backend`).
+- *Experimental:* `ModuleRuntime::load_model` and the free `inference::load_model`
+  — the explicit fixed `input_shape` argument is likely to change once shapes can
+  be auto-detected from the model (or made variable). Expect this signature to
+  gain a default or move to a builder; depend on it accordingly.
 - *Not covered by semver:* the **string values** returned by `model_backend` /
   `Model::backend` (e.g. `"cpu(tract)"`) are informational — do not parse them.
   The `internals` feature is private (fuzz-only). The `cuda` backend-selection /
   fallback behavior may change.
-- *Known limitation (not a stability promise):* `load_model` takes a fixed input
-  shape; auto-detection may be added later as a **companion** API, without
-  breaking the existing signature.
 
 **`kelvane-sdk`** — the guest ABI
 

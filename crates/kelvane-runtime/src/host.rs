@@ -120,6 +120,11 @@ impl ModuleRuntime {
     /// `input_shape` is the model's fixed input shape (e.g. `[1, 4, 11, 11]`);
     /// the host reshapes the guest's flat `f32` request to it.
     ///
+    /// **Stability: experimental.** The explicit `input_shape` argument is likely
+    /// to change once shapes can be auto-detected from the model (or made
+    /// variable); this signature may gain a default or move to a builder. The
+    /// rest of [`ModuleRuntime`] is stable — see the crate README.
+    ///
     /// ```no_run
     /// # use kelvane_runtime::{ExecutionLimits, ModuleRuntime};
     /// # use std::path::Path;
