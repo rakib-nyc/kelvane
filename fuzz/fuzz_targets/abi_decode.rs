@@ -7,7 +7,7 @@
 //! region must lie fully inside `mem_size` and within the 1 MiB output cap.
 #![no_main]
 
-use kelvane_runtime::host::decode_output_region;
+use kelvane_runtime::internals::decode_output_region;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

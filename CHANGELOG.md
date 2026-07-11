@@ -6,6 +6,26 @@ All notable changes to Kelvane are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Threat model** (`SECURITY.md`): what the sandbox does and does not protect
+  against, each protection tied to a mechanism and a test; trust boundary,
+  assumptions, and responsible-disclosure guidance.
+- **Generality test**: a small CNN trained on the scikit-learn `digits` dataset
+  (input shape `[1,1,8,8]`, ~97% accuracy) classified end-to-end through the
+  sandbox, demonstrating Kelvane runs models beyond its own gridworld toy.
+- **`no_ambient_filesystem_authority`** adversarial test: a guest's WASI
+  filesystem call is denied (no preopens), backing the zero-authority claim.
+- Full rustdoc on the public API with doctests, and a documented, conservative
+  API-stability statement in the README.
+
+### Changed
+- **API surface made intentional.** The pure ABI-decode functions
+  (`decode_output_region`, `bytes_to_f32`), previously `pub #[doc(hidden)]` for
+  fuzzing, are now `pub(crate)` and reachable only via the off-by-default
+  `internals` feature (fuzz-only, no semver guarantee).
+- `#![deny(missing_docs)]` on `kelvane-runtime` and `kelvane-sdk`; `cargo test
+  --doc` enforced in CI.
+
 ### Security
 - **Upgraded `wasmtime` / `wasmtime-wasi` 29 → 46.0.1**, resolving 19 RustSec
   advisories against the old engine — including two critical sandbox escapes

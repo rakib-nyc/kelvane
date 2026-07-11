@@ -6,7 +6,7 @@
 //! byte string — and yield exactly `len / 4` floats (trailing partial ignored).
 #![no_main]
 
-use kelvane_runtime::host::bytes_to_f32;
+use kelvane_runtime::internals::bytes_to_f32;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

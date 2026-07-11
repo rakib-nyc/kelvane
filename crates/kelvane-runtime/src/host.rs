@@ -52,10 +52,10 @@ const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
 /// region lies fully inside the guest's `mem_size`-byte linear memory.
 ///
 /// This is the trust boundary for a module's return value — every field is
-/// attacker-controlled — so it is a pure function with no I/O, exercised both by
-/// [`ModuleRuntime::invoke`] and by the `abi_decode` fuzz target.
-#[doc(hidden)]
-pub fn decode_output_region(packed: i64, mem_size: usize) -> Result<(usize, usize)> {
+/// attacker-controlled — so it is a pure function with no I/O, exercised by
+/// [`ModuleRuntime::invoke`], the in-crate unit tests, and (via the
+/// feature-gated [`crate::internals`] surface) the `abi_decode` fuzz target.
+pub(crate) fn decode_output_region(packed: i64, mem_size: usize) -> Result<(usize, usize)> {
     let out_ptr = ((packed >> 32) & 0xFFFF_FFFF) as usize;
     let out_len = (packed & 0xFFFF_FFFF) as usize;
     if out_len > MAX_OUTPUT_BYTES {
@@ -74,8 +74,7 @@ pub fn decode_output_region(packed: i64, mem_size: usize) -> Result<(usize, usiz
 /// partial (`< 4`-byte) remainder. Pure and total — never panics on any input —
 /// which the `infer_decode` fuzz target asserts. Used to marshal the guest's
 /// inference request out of its linear memory.
-#[doc(hidden)]
-pub fn bytes_to_f32(buf: &[u8]) -> Vec<f32> {
+pub(crate) fn bytes_to_f32(buf: &[u8]) -> Vec<f32> {
     buf.chunks_exact(4)
         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
@@ -117,6 +116,18 @@ impl ModuleRuntime {
     }
 
     /// Load an ONNX model and make it available to modules via `kelvane::infer`.
+    ///
+    /// `input_shape` is the model's fixed input shape (e.g. `[1, 4, 11, 11]`);
+    /// the host reshapes the guest's flat `f32` request to it.
+    ///
+    /// ```no_run
+    /// # use kelvane_runtime::{ExecutionLimits, ModuleRuntime};
+    /// # use std::path::Path;
+    /// # fn main() -> anyhow::Result<()> {
+    /// let mut rt = ModuleRuntime::new(ExecutionLimits::default())?;
+    /// rt.load_model(Path::new("models/policy.onnx"), &[1, 4, 11, 11])?;
+    /// # Ok(()) }
+    /// ```
     pub fn load_model(&mut self, onnx_path: &Path, input_shape: &[usize]) -> Result<()> {
         let model = inference::load_model(onnx_path, input_shape)?;
         info!(backend = model.backend(), "Loaded model for inference");
@@ -130,6 +141,15 @@ impl ModuleRuntime {
     }
 
     /// Compile and register a WASM module under `id`.
+    ///
+    /// ```no_run
+    /// # use kelvane_runtime::{ExecutionLimits, ModuleRuntime};
+    /// # use std::path::Path;
+    /// # fn main() -> anyhow::Result<()> {
+    /// # let mut rt = ModuleRuntime::new(ExecutionLimits::default())?;
+    /// rt.load_module(Path::new("policy_module.wasm"), "policy")?;
+    /// # Ok(()) }
+    /// ```
     pub fn load_module(&mut self, wasm_path: &Path, id: &str) -> Result<()> {
         if self.modules.len() >= self.limits.max_instances {
             anyhow::bail!(
@@ -151,7 +171,19 @@ impl ModuleRuntime {
 
     /// Replace a loaded module in place, preserving its call statistics. Because
     /// every `invoke` instantiates fresh from the stored module, the next call
-    /// transparently runs the new module — no runtime restart.
+    /// transparently runs the new module — no runtime restart. Errors if `id` is
+    /// not already loaded.
+    ///
+    /// ```no_run
+    /// # use kelvane_runtime::{ExecutionLimits, ModuleRuntime};
+    /// # use std::path::Path;
+    /// # fn main() -> anyhow::Result<()> {
+    /// # let mut rt = ModuleRuntime::new(ExecutionLimits::default())?;
+    /// # rt.load_module(Path::new("scripted_module.wasm"), "slot")?;
+    /// // The next invoke of "slot" runs the new module.
+    /// rt.hot_swap("slot", Path::new("policy_module.wasm"))?;
+    /// # Ok(()) }
+    /// ```
     pub fn hot_swap(&mut self, id: &str, wasm_path: &Path) -> Result<()> {
         // Compile first so a bad module can't corrupt a live slot.
         let module = self.compile(wasm_path, id)?;
@@ -195,6 +227,20 @@ impl ModuleRuntime {
 
     /// Invoke a module's `process` function with `input` bytes and return the
     /// output bytes, enforcing the per-call memory/CPU sandbox.
+    ///
+    /// Each call runs in a fresh store (no state carries across calls). Returns
+    /// an error if the module is absent, traps, exhausts fuel, exceeds the memory
+    /// cap, or returns an out-of-bounds / oversized output region.
+    ///
+    /// ```no_run
+    /// # use kelvane_runtime::{ExecutionLimits, ModuleRuntime};
+    /// # use std::path::Path;
+    /// # fn main() -> anyhow::Result<()> {
+    /// # let mut rt = ModuleRuntime::new(ExecutionLimits::default())?;
+    /// # rt.load_module(Path::new("policy_module.wasm"), "policy")?;
+    /// let output: Vec<u8> = rt.invoke("policy", br#"{"data":[0.0]}"#)?;
+    /// # Ok(()) }
+    /// ```
     pub fn invoke(&mut self, id: &str, input: &[u8]) -> Result<Vec<u8>> {
         let module = {
             let slot = self

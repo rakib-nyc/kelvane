@@ -25,3 +25,6 @@ default = []
 # GPU-accelerated inference via ONNX Runtime's CUDA execution provider.
 # Falls back to the CPU backend automatically when CUDA hardware/runtime is absent.
 cuda = ["dep:ort", "ort/cuda"]
+# Exposes the crate-internal decode functions (via `internals`) for the fuzz
+# targets only. NOT part of the public API; no semver guarantee.
+internals = []

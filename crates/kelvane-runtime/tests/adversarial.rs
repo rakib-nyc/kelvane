@@ -324,6 +324,36 @@ fn per_call_state_is_isolated() {
 }
 
 // ===========================================================================
+// No ambient authority: the guest is granted no filesystem
+// ===========================================================================
+
+#[test]
+fn no_ambient_filesystem_authority() {
+    // The guest imports a WASI filesystem primitive (`fd_prestat_get`, which WASI
+    // libc uses to enumerate preopened directories) and calls it on the first
+    // preopen slot (fd 3). The runtime grants NO preopens, so this must fail with
+    // a non-zero errno — proving the guest has no filesystem capability. The
+    // errno is returned as the module's 4-byte output.
+    let wat = format!(
+        r#"(module
+        (import "wasi_snapshot_preview1" "fd_prestat_get"
+            (func $fd_prestat_get (param i32 i32) (result i32)))
+        (memory (export "memory") 1)
+        (func (export "module_alloc") (param i32) (result i32) i32.const 1024)
+        (func (export "process") (param i32 i32) (result i64)
+            (i32.store (i32.const 100) (call $fd_prestat_get (i32.const 3) (i32.const 2048)))
+            {}))"#,
+        packed(100, 4)
+    );
+    let out = run_wat("no_fs", &wat, b"{}").expect("call should complete, not trap");
+    let errno = i32::from_le_bytes([out[0], out[1], out[2], out[3]]);
+    assert_ne!(
+        errno, 0,
+        "fd_prestat_get(3) must be denied (no preopens); got success errno 0"
+    );
+}
+
+// ===========================================================================
 // Inference boundary: hostile kelvane::infer requests (WAT calls the import)
 // ===========================================================================
 

@@ -12,6 +12,7 @@ libfuzzer-sys = "0.4"
 
 [dependencies.kelvane-runtime]
 path = "../crates/kelvane-runtime"
+features = ["internals"]
 
 [[bin]]
 name = "abi_decode"

@@ -157,6 +157,67 @@ cargo run --release --features cuda --example bench_e2e -p kelvane-runtime   # G
 
 These are not general performance claims — measure your own model and hardware.
 
+## Runs models beyond its own toy
+
+Kelvane is not tied to the gridworld policy it ships. The generality test
+(`crates/kelvane-runtime/tests/generality.rs`) loads a small **CNN trained on the
+scikit-learn `digits` dataset** (8×8 handwritten digits, 10 classes — a different
+domain and a different input shape, `[1,1,8,8]`, than the `[1,4,11,11]` policy)
+and classifies held-out digits **end to end through the sandbox**, via the same
+generic guest module. The model (~97% test accuracy) and its provenance/license
+are documented in `crates/kelvane-runtime/tests/models/generate_digits.py`.
+
+**Current generality boundary:** the input shape is fixed at load time and the
+batch dimension is 1; the example guest reads a flat feature vector and argmaxes
+up to 64 output scores. Models within those limits (fixed shape, batch-1, ≤64
+outputs) run unchanged; anything needing dynamic shapes or batching does not yet.
+
+## API stability
+
+Kelvane is **pre-1.0** (`0.x`). "Stable" below means we will not change it
+without bumping the minor version (`0.x → 0.(x+1)`) and noting it in the
+changelog; "experimental" means it may change more freely. When in doubt we mark
+things experimental — under-promising is deliberate.
+
+**`kelvane-runtime`**
+
+- *Stable:* `ModuleRuntime` and its methods (`new`, `load_model`, `load_module`,
+  `invoke`, `hot_swap`, `call_count`, `model_backend`); `ExecutionLimits` and its
+  fields; `inference::load_model`; `Model` and its methods (`run`, `input_len`,
+  `backend`).
+- *Not covered by semver:* the **string values** returned by `model_backend` /
+  `Model::backend` (e.g. `"cpu(tract)"`) are informational — do not parse them.
+  The `internals` feature is private (fuzz-only). The `cuda` backend-selection /
+  fallback behavior may change.
+- *Known limitation (not a stability promise):* `load_model` takes a fixed input
+  shape; auto-detection may be added later as a **companion** API, without
+  breaking the existing signature.
+
+**`kelvane-sdk`** — the guest ABI
+
+- *Stable:* the `export_module!` macro and its byte-in/byte-out handler contract;
+  `pack`; the packed-`i64` return layout; the `module_alloc` / `process` /
+  `module_dealloc` export signatures; the `kelvane::infer` import signature and
+  its little-endian flat-`f32` tensor convention. Guests built against these keep
+  working. The full contract is in the crate's rustdoc.
+- *Experimental:* `alloc_bytes`, `dealloc_bytes`, and `run` are the low-level
+  plumbing behind `export_module!` — prefer the macro.
+
+The JSON shape of the **example** modules' output
+(`{"module":...,"action":...}`) is an example convention, **not** part of the
+ABI, and is not stable.
+
+## Security
+
+Kelvane's threat model — what the sandbox does and does **not** protect against,
+each claim tied to a mechanism and a test — is documented in
+[`SECURITY.md`](SECURITY.md), along with the trust boundary, the assumptions the
+guarantees rest on, and how to report a vulnerability. In short: it defends the
+**host** against an untrusted **guest** (memory cap, fuel/DoS bounds, zero
+ambient authority, per-call isolation, host-owned model, a patched engine); it
+does **not** protect against side channels, a malicious host, bugs in the engine
+itself, or the safety of the model's own decisions.
+
 ## Supported platforms & toolchains
 
 CI builds and runs the **full** test suite on every cell below. WASM modules are
