@@ -19,7 +19,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tracing::info;
 use wasmtime::*;
-use wasmtime_wasi::preview1::WasiP1Ctx;
+use wasmtime_wasi::p1::WasiP1Ctx;
 use wasmtime_wasi::WasiCtxBuilder;
 
 /// Per-invocation resource limits.
@@ -206,7 +206,7 @@ impl ModuleRuntime {
 
         let mut store = self.new_store()?;
         let mut linker = Linker::new(&self.engine);
-        wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |s: &mut StoreState| &mut s.wasi)?;
+        wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |s: &mut StoreState| &mut s.wasi)?;
 
         // Host-owned inference capability. Modules that don't import it are
         // unaffected; a module that imports it with no model loaded gets -1 and

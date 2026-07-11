@@ -14,10 +14,10 @@ exclude = ["fuzz"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-# Minimum Supported Rust Version — determined empirically (the default build's
-# floor comes from `icu_*` 2.2.0 in the tree). CI pins an MSRV row to exactly
-# this; `cuda` needs a newer toolchain (ort is edition 2024 / rustc 1.88+).
-rust-version = "1.86.0"
+# Minimum Supported Rust Version — determined empirically. The floor is set by
+# wasmtime 46 / wasmtime-wasi 46 / cranelift 0.133 (edition 2024, rustc 1.94.0).
+# CI pins an MSRV row to exactly this.
+rust-version = "1.94.0"
 license = "Apache-2.0"
 authors = ["Muhammad Rakibul Islam"]
 repository = "https://github.com/rakib-nyc/kelvane"
@@ -29,8 +29,8 @@ serde_json = "1"
 tracing = "0.1"
 
 # WASM host runtime
-wasmtime = "29"
-wasmtime-wasi = { version = "29", features = ["preview1"] }
+wasmtime = "46"
+wasmtime-wasi = { version = "46" }
 
 # CPU neural inference (pure-Rust ONNX)
 tract-onnx = "0.21"

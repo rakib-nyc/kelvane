@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rakib-nyc/kelvane/actions/workflows/ci.yml/badge.svg)](https://github.com/rakib-nyc/kelvane/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-79%25-green)](#supported-platforms--toolchains)
-[![MSRV](https://img.shields.io/badge/MSRV-1.88.0-blue)](#supported-platforms--toolchains)
+[![MSRV](https://img.shields.io/badge/MSRV-1.94.0-blue)](#supported-platforms--toolchains)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 **Run neural policies you don't fully trust — safely, and swap them live.**
@@ -121,24 +121,25 @@ Exported `[1,4,11,11]` policy, 2000 iterations after 50 warm-up iterations.
 
 **Environment.** AMD Ryzen 7 3700X (8C/16T) · NVIDIA RTX 2080 SUPER (driver
 610.62, CUDA 12.x) · Ubuntu 24.04.2 on WSL2 (kernel 6.18, Windows 10) · rustc
-1.94.1 · wasmtime 29.0.1 · tract-onnx 0.21.12 · ort 2.0.0-rc.12 (ONNX Runtime,
+1.94.1 · wasmtime 46.0.1 · tract-onnx 0.21.12 · ort 2.0.0-rc.12 (ONNX Runtime,
 CUDA EP). All figures are from this one machine.
 
 | Path | Backend | median | mean | p95 | p99 | throughput |
 |---|---|---|---|---|---|---|
-| **End-to-end** | CPU (`tract`) | **161 µs** | 166 µs | 203 µs | ~240 µs | ~6,000 calls/s |
-| **End-to-end** | GPU (CUDA/ORT) | 337 µs | 346 µs | 397 µs | 457 µs | ~2,900 calls/s |
-| Inference-only | CPU (`tract`) | 16.4 µs | 17.1 µs | 21.5 µs | ~31 µs | ~58,600 inf/s |
-| Inference-only | GPU (CUDA/ORT) | 153 µs | 159 µs | 182 µs | 218 µs | ~6,300 inf/s |
+| **End-to-end** | CPU (`tract`) | **175 µs** | 184 µs | 227 µs | ~290 µs | ~5,400 calls/s |
+| **End-to-end** | GPU (CUDA/ORT) | 345 µs | 353 µs | 400 µs | 447 µs | ~2,830 calls/s |
+| Inference-only | CPU (`tract`) | 16.3 µs | 17.0 µs | 21.5 µs | ~32 µs | ~58,900 inf/s |
+| Inference-only | GPU (CUDA/ORT) | 158 µs | 164 µs | 192 µs | 224 µs | ~6,080 inf/s |
 
 Two honest takeaways for *this* small model on *this* machine:
 
-1. **The full sandboxed call is ~10× the inference number** (161 µs vs 16.4 µs on
+1. **The full sandboxed call is ~11× the inference number** (175 µs vs 16.3 µs on
    CPU). Per-call store construction, instantiation, and the ABI round trip — not
-   inference — dominate. The previously reported ~16 µs was inference-only and
-   understated the real per-decision latency by roughly an order of magnitude.
-2. **The GPU path is real but slower here — about 9× slower than CPU** (153 µs vs
-   16.4 µs inference-only). Expected for a tiny `[1,4,11,11]→7` model: kernel
+   inference — dominate. (On wasmtime 46 this end-to-end cost is ~9% higher than
+   on the old wasmtime 29 — the engine upgrade that fixed the sandbox-escape CVEs
+   moved per-call instantiation from ~161 µs to ~175 µs; inference is unchanged.)
+2. **The GPU path is real but slower here — about 10× slower than CPU** (158 µs vs
+   16.3 µs inference-only). Expected for a tiny `[1,4,11,11]→7` model: kernel
    launch and host⇄device transfer swamp the compute, and `tract`'s optimized CPU
    path wins. CUDA is present for larger models, not as a speed-up for this one.
 
@@ -169,9 +170,11 @@ skipped — a green cell means the sandbox was actually exercised on that platfo
 | macOS — `macos-latest`, arm64 | ✅ | ✅ |
 | Windows — `windows-latest`, x86-64 | ✅ | ✅ |
 
-- **MSRV: 1.88.0**, determined empirically — the dependency tree's floor is
-  `time 0.3.53` (rustc 1.88). 1.87 and below fail to build; the MSRV CI row pins
-  exactly 1.88.0. `rust-version` in `Cargo.toml` matches.
+- **MSRV: 1.94.0**, determined empirically — the dependency tree's floor is
+  `wasmtime`/`wasmtime-wasi` 46 and `cranelift` 0.133 (edition 2024, rustc
+  1.94.0). 1.93 and below fail to build; the MSRV CI row pins exactly 1.94.0.
+  `rust-version` in `Cargo.toml` matches. (Raised from 1.88 by the wasmtime
+  upgrade that resolved the sandbox-escape advisories.)
 - **wasm target:** the example guest modules compile to `wasm32-wasip1`
   (`rustup target add wasm32-wasip1`). The guest code is gated to `wasm32`, so a
   host-side `cargo build`/`clippy --workspace` is link-clean on every OS.
@@ -192,12 +195,13 @@ skipped — a green cell means the sandbox was actually exercised on that platfo
   BlueOak). The only copyleft entries (`ittapi` GPL-2.0, `r-efi` LGPL-2.1) are
   the copyleft arm of dual/multi-licensed crates; the permissive arm is selected,
   so **no copyleft obligation** and **no GPL/AGPL surprise**.
-- **Advisories** (`cargo audit`, reported by a **non-blocking** CI job): the
-  pinned `wasmtime` 29 / `wasmtime-wasi` 29 carry **19 open RustSec advisories**
-  (incl. 2 rated critical) whose fixes require a **breaking** bump to
-  `wasmtime ≥ 36`. This is reported every CI run (nothing hidden) and is flagged
-  for a dedicated follow-up rather than silently bumped — see the changelog / the
-  Phase 3 notes. `fxhash` and `paste` are flagged unmaintained (transitive).
+- **Advisories** (`cargo audit`, a **blocking** CI job): **no known
+  vulnerabilities.** The earlier 19 RustSec advisories against `wasmtime` /
+  `wasmtime-wasi` 29 — including two critical sandbox escapes
+  (RUSTSEC-2026-0095/0096) and a HIGH WASI `path_open` bypass (RUSTSEC-2026-0149)
+  — were **resolved by upgrading to `wasmtime` 46.0.1**. The only remaining
+  finding is one *unmaintained* advisory for `paste` (a transitive proc-macro
+  dependency), which is not a vulnerability.
 
 ## License
 

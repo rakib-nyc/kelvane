@@ -32,7 +32,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        rust: [stable, "1.88.0"] # 1.88.0 = empirically-determined MSRV
+        rust: [stable, "1.94.0"] # 1.94.0 = empirically-determined MSRV (wasmtime 46)
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -83,12 +83,10 @@ jobs:
       - run: cargo deny check licenses bans sources
 
   audit:
-    name: cargo-audit (advisories, non-blocking)
+    name: cargo-audit (advisories)
     runs-on: ubuntu-latest
-    # Non-blocking: wasmtime 29 carries known RustSec advisories whose fixes
-    # require a breaking major bump (see the Phase 3 report). Reported here every
-    # run so nothing is hidden, but does not gate CI pending that decision.
-    continue-on-error: true
+    # Blocking: after the wasmtime 46 upgrade the tree has no known
+    # vulnerabilities, so this now gates CI — a newly disclosed advisory fails it.
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
